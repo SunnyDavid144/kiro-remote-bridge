@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import { tapLight, soundSend } from "../lib/haptics";
 
 interface ChatInputProps {
-  onSend: (text: string) => void;
+  onSend: (text: string, imageFile?: File) => void;
   onCancel: () => void;
   isStreaming: boolean;
   disabled: boolean;
@@ -13,19 +13,24 @@ interface ChatInputProps {
 export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInputProps) {
   const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
+  const [attachedImage, setAttachedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = useCallback(() => {
     const trimmed = value.trim();
-    if (!trimmed || disabled) return;
+    if ((!trimmed && !attachedImage) || disabled) return;
     tapLight();
     soundSend();
-    onSend(trimmed);
+    onSend(trimmed, attachedImage || undefined);
     setValue("");
+    setAttachedImage(null);
+    setImagePreview(null);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-  }, [value, disabled, onSend]);
+  }, [value, disabled, onSend, attachedImage]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -45,8 +50,42 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
     }
   }, []);
 
+  const handleImageSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAttachedImage(file);
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = (ev) => setImagePreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+    tapLight();
+  }, []);
+
+  const removeImage = useCallback(() => {
+    setAttachedImage(null);
+    setImagePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, []);
+
   return (
     <div className="border-t border-[var(--border-dim)] bg-[var(--bg-secondary)]/95 backdrop-blur-md px-3 py-3 pb-[env(safe-area-inset-bottom,12px)]">
+      {/* Image preview */}
+      {imagePreview && (
+        <div className="mb-2 relative inline-block animate-scale-in">
+          <img
+            src={imagePreview}
+            alt="Attached"
+            className="h-16 w-auto rounded-lg border border-[var(--border-dim)] object-cover"
+          />
+          <button
+            onClick={removeImage}
+            className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[var(--error)] text-white flex items-center justify-center text-[10px] shadow-sm"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       <div
         className={`flex items-end gap-2 rounded-2xl border transition-all duration-200 px-1 py-1 ${
           isFocused
@@ -54,6 +93,29 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
             : "border-[var(--border-dim)] bg-[var(--bg-input)]"
         }`}
       >
+        {/* Image attach button */}
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={disabled}
+          className="press-feedback flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-30"
+          aria-label="Attach image"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <rect x="2" y="3" width="12" height="10" rx="2" stroke="currentColor" strokeWidth="1.3" />
+            <circle cx="5.5" cy="6.5" r="1.25" stroke="currentColor" strokeWidth="1" />
+            <path d="M2 11L5.5 8L8 10L11 7L14 11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleImageSelect}
+          className="hidden"
+        />
+
         {/* Text input */}
         <textarea
           ref={textareaRef}
@@ -66,7 +128,7 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
           placeholder={disabled ? "Waiting for connection..." : "Message Kiro..."}
           disabled={disabled}
           rows={1}
-          className="flex-1 resize-none bg-transparent px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none disabled:opacity-40 leading-relaxed"
+          className="flex-1 resize-none bg-transparent px-2 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none disabled:opacity-40 leading-relaxed"
           style={{ maxHeight: "120px" }}
         />
 
@@ -84,7 +146,7 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
         ) : (
           <button
             onClick={handleSubmit}
-            disabled={!value.trim() || disabled}
+            disabled={(!value.trim() && !attachedImage) || disabled}
             className="press-feedback flex-shrink-0 w-9 h-9 rounded-xl bg-[var(--accent)] flex items-center justify-center text-white transition-all shadow-md shadow-[var(--accent)]/20 disabled:opacity-20 disabled:shadow-none disabled:pointer-events-none hover:brightness-110"
             aria-label="Send"
           >

@@ -38,7 +38,7 @@ const MAX_RECONNECT_ATTEMPTS = 10;
 export interface UseBridgeReturn {
   state: BridgeState;
   messages: ChatMessage[];
-  sendPrompt: (text: string) => void;
+  sendPrompt: (text: string, imageFile?: File) => void;
   cancelPrompt: () => void;
   respondToPermission: (requestId: number, optionId: string) => void;
   reconnect: () => void;
@@ -428,9 +428,15 @@ export function useBridge(): UseBridgeReturn {
   // ─── Public API ────────────────────────────────────────────────────────
 
   const sendPrompt = useCallback(
-    (text: string) => {
+    (text: string, imageFile?: File) => {
       if (!state.sessionId) {
         addSystemMessage("No active session. Waiting for ACP connection...");
+        return;
+      }
+
+      // If there's an image, upload it first then send prompt with paste
+      if (imageFile) {
+        sendPromptWithImage(text, imageFile);
         return;
       }
 
@@ -454,6 +460,58 @@ export function useBridge(): UseBridgeReturn {
       sendAcp(msg);
     },
     [state.sessionId, sendAcp, addSystemMessage]
+  );
+
+  const sendPromptWithImage = useCallback(
+    async (text: string, imageFile: File) => {
+      const host = typeof window !== "undefined" ? window.location.hostname : "127.0.0.1";
+
+      // Add user message to chat (with image indicator)
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `usr-${Date.now()}`,
+          role: "user",
+          content: text ? `📷 ${text}` : "📷 [Image attached]",
+          timestamp: Date.now(),
+        },
+      ]);
+
+      streamingMessageRef.current = "";
+      setIsStreaming(true);
+
+      try {
+        // Upload image
+        const formData = new FormData();
+        formData.append("image", imageFile);
+
+        const uploadRes = await fetch(`http://${host}:3100/api/upload-image`, {
+          method: "POST",
+          body: formData,
+        });
+        const uploadData = await uploadRes.json();
+
+        if (!uploadData.ok) {
+          addSystemMessage(`Image upload failed: ${uploadData.error}`);
+          setIsStreaming(false);
+          return;
+        }
+
+        // Paste image into IDE with prompt
+        await fetch(`http://${host}:3100/api/paste-image`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            imagePath: uploadData.path,
+            prompt: text,
+          }),
+        });
+      } catch (err) {
+        addSystemMessage(`Failed to send image: ${err}`);
+        setIsStreaming(false);
+      }
+    },
+    [addSystemMessage]
   );
 
   const cancelPrompt = useCallback(() => {

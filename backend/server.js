@@ -621,6 +621,117 @@ app.post("/response-complete", (_req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Image Upload — Accept images from phone, save to disk, paste into IDE
+// ---------------------------------------------------------------------------
+
+const multer = require("multer");
+const ATTACHMENTS_DIR = path.join(BRIDGE_DIR, "attachments");
+if (!fs.existsSync(ATTACHMENTS_DIR)) {
+  fs.mkdirSync(ATTACHMENTS_DIR, { recursive: true });
+}
+
+const upload = multer({
+  dest: ATTACHMENTS_DIR,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only images are allowed"));
+    }
+  },
+});
+
+app.post("/api/upload-image", upload.single("image"), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "No image uploaded" });
+  }
+
+  // Rename to include extension
+  const ext = req.file.mimetype.split("/")[1] || "png";
+  const finalPath = `${req.file.path}.${ext}`;
+  fs.renameSync(req.file.path, finalPath);
+
+  console.log(`[upload] Image saved: ${finalPath} (${req.file.size} bytes)`);
+
+  // Return the path so the frontend can reference it in the prompt
+  res.json({
+    ok: true,
+    path: finalPath,
+    filename: `${req.file.filename}.${ext}`,
+    size: req.file.size,
+  });
+});
+
+/**
+ * Inject an image into the IDE via AppleScript clipboard.
+ * Called after uploading, before or during prompt injection.
+ */
+app.post("/api/paste-image", async (req, res) => {
+  const { imagePath, prompt } = req.body;
+
+  if (!imagePath || !fs.existsSync(imagePath)) {
+    return res.status(400).json({ error: "Image file not found" });
+  }
+
+  const { exec } = require("child_process");
+  const adapter = registry.getActive();
+  const appName = adapter ? adapter.getAppIdentifier() : "Kiro";
+
+  // AppleScript to set clipboard to image, activate IDE, paste image, then type prompt
+  const fullPrompt = prompt
+    ? prompt + ROUTING_SUFFIX
+    : "";
+
+  const script = `
+-- Set clipboard to image file
+set imageFile to POSIX file "${imagePath}"
+set the clipboard to (read imageFile as «class PNGf»)
+
+-- Activate IDE and focus chat
+tell application "${appName}" to activate
+delay 0.3
+tell application "System Events"
+  keystroke "l" using command down
+  delay 0.2
+  -- Paste the image
+  keystroke "v" using command down
+  delay 0.3
+end tell
+${fullPrompt ? `
+-- Now add the text prompt
+set the clipboard to ${JSON.stringify(fullPrompt)}
+delay 0.1
+tell application "System Events"
+  keystroke "v" using command down
+  delay 0.1
+  keystroke return
+end tell` : `
+tell application "System Events"
+  keystroke return
+end tell`}
+`;
+
+  exec(`osascript -e '${script.replace(/'/g, "'\\''")}'`, (err) => {
+    if (err) {
+      console.error("[upload] AppleScript paste error:", err.message);
+      return res.json({ ok: false, error: err.message });
+    }
+    console.log("[upload] Image pasted into IDE");
+
+    // Start response watcher if there was a prompt
+    if (fullPrompt) {
+      lastPromptSentAt = Date.now();
+      agentStatus = "working";
+      broadcastStatus();
+      startResponseWatcher();
+    }
+
+    res.json({ ok: true });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // WebSocket Connection Handling
 // ---------------------------------------------------------------------------
 
