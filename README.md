@@ -1,139 +1,249 @@
-# Kiro Remote Bridge
+# 📱 Kiro Remote Bridge
 
-A local development tool that lets you control a Kiro IDE session from your mobile phone via a secure web interface.
+**Control any AI coding agent from your phone.** Send prompts, receive streaming responses, and manage your workspace — from the coffee shop, the couch, or anywhere with signal.
+
+Works with **Kiro**, **Cursor**, **Windsurf**, **VS Code** (Copilot/Cline), and **Codex CLI**.
+
+---
+
+## How It Works
+
+```
+┌──────────────┐         WebSocket          ┌──────────────┐       AppleScript       ┌──────────────┐
+│  Your Phone  │◄─────────────────────────►│    Bridge     │─────────────────────────►│  IDE Agent   │
+│  (PWA)       │    ws://mac:3100/ws        │    Server     │    Cmd+L → Paste → ⏎    │  (Kiro, etc) │
+└──────────────┘                            └──────────────┘                          └──────────────┘
+                                                   │
+                                            polls response.md
+                                                   │
+                                            streams back to phone
+```
+
+1. You type a message on your phone
+2. Bridge injects it into your IDE's chat via AppleScript
+3. The AI agent processes it (with full workspace context)
+4. Bridge watches for the response file and streams it back to your phone
+
+Your AI agent runs locally with full access to your files, terminal, and tools. Your phone is just the remote control.
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- macOS (AppleScript is used for IDE injection)
+- Node.js 18+
+- An AI coding IDE (Kiro, Cursor, Windsurf, VS Code, or Codex CLI)
+- Accessibility permissions granted for the bridge
+
+### Setup (2 minutes)
+
+```bash
+# Clone the repo
+git clone https://github.com/SunnyDavid144/kiro-remote-bridge.git
+cd kiro-remote-bridge
+
+# Install backend dependencies
+cd backend && npm install && cd ..
+
+# Install frontend dependencies
+cd frontend && npm install && cd ..
+
+# Start both servers
+cd backend && npm start &
+cd frontend && npm run dev -- -p 3101 &
+```
+
+### Connect Your Phone
+
+**Same WiFi:**
+Open `http://<your-mac-ip>:3101` on your phone.
+
+**From anywhere (5G, remote):**
+1. Install [Tailscale](https://tailscale.com) on Mac + phone
+2. Sign in with the same account
+3. Open `http://<tailscale-ip>:3101` on your phone
+
+### Grant Permissions
+
+The bridge uses AppleScript to paste prompts into your IDE. macOS will ask for:
+- **Accessibility** access (System Settings → Privacy → Accessibility)
+
+---
+
+## Supported IDEs
+
+| IDE | Chat Shortcut | Status |
+|-----|--------------|--------|
+| 🟣 Kiro | `Cmd+L` | Full support |
+| ⚡ Cursor | `Cmd+L` | Full support |
+| 🏄 Windsurf | `Cmd+L` | Full support |
+| 🔵 VS Code | `Cmd+Shift+I` | Copilot Chat |
+| 🤖 Codex CLI | Terminal paste | Full support |
+
+The bridge auto-detects which IDEs are running. Switch between them from the workspace selector on your phone.
+
+---
+
+## Features
+
+### Mobile-First Chat UI
+- Console-inspired dark interface
+- Streaming markdown with syntax highlighting
+- Code blocks with copy button
+- Tool call indicators and execution plans
+
+### Smart Agent Detection
+- Shows when your agent is busy vs. idle
+- Queues prompts when agent is working (auto-sends when idle)
+- Won't accidentally interrupt ongoing tasks
+
+### Workspace Selector
+- See all open IDE windows across all supported IDEs
+- Target a specific project/window
+- Switch IDEs on the fly
+
+### PWA / Installable
+- Add to home screen for native app feel
+- Splash screen, app icon, standalone mode
+- Works offline for cached messages
+
+### Session Persistence
+- Messages survive page refreshes
+- Onboarding wizard for first-time setup
+- Settings panel with connection info
+
+### Haptic Feedback
+- Vibration on send/receive
+- Audio cues (send whoosh, receive pop, connection chime)
+- Pull-to-refresh gesture
+
+---
 
 ## Architecture
 
 ```
-┌─────────────┐       WebSocket        ┌──────────────┐      stdin/stdout      ┌──────────────┐
-│   Mobile    │◄──────────────────────►│  Bridge      │◄───────────────────────►│  kiro-cli    │
-│   Browser   │   ws://127.0.0.1:3100  │  Server      │   Content-Length framed │  acp         │
-└─────────────┘                        └──────────────┘   JSON-RPC 2.0         └──────────────┘
-```
-
-## Quick Start
-
-### 1. Start the Bridge Server
-
-```bash
-cd backend
-npm install
-npm start
-```
-
-The server binds to `127.0.0.1:3100` — it is **not** exposed on `0.0.0.0`.
-
-### 2. Start the Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev -- -p 3101
-```
-
-Open `http://localhost:3101` on your phone (via Tailscale) or browser.
-
-### 3. Or Start Both at Once
-
-```bash
-npm run dev    # from the kiro-remote-bridge root
-```
-
-### 4. Verify It Works
-
-In a second terminal:
-
-```bash
-cd backend
-npm run test:client
-```
-
-You should see:
-```
-[test] Connected!
-[test] Sending bridge:ping...
-[test] Received: { type: "bridge:status", acp: "running", pid: ... }
-[test] Received: { type: "bridge:pong", ts: ... }
-[test] ✓ Bridge is alive and responding.
-[test] ✓ WebSocket relay is functional.
-```
-
-### 3. Health Check
-
-```bash
-curl http://127.0.0.1:3100/health
-```
-
-Returns:
-```json
-{ "status": "ok", "acp": "running", "clients": 0 }
-```
-
-## Mobile Access via Tailscale
-
-Since the server only listens on localhost, use [Tailscale](https://tailscale.com) to securely route your mobile traffic:
-
-1. Install Tailscale on both your Mac and phone.
-2. From your phone's browser, connect to `http://<your-mac-tailscale-ip>:3100`.
-
-## WebSocket Protocol
-
-Connect to `ws://127.0.0.1:3100/ws`. Messages are JSON envelopes:
-
-### Client → Server
-
-| `type`        | Description                              |
-|---------------|------------------------------------------|
-| `acp:send`    | Relay `msg.data` (JSON-RPC 2.0) to ACP   |
-| `acp:restart` | Kill and respawn the ACP subprocess       |
-| `bridge:ping` | Latency check                            |
-
-### Server → Client
-
-| `type`            | Description                              |
-|-------------------|------------------------------------------|
-| `bridge:status`   | Sent on connect — current ACP state      |
-| `bridge:pong`     | Response to ping                         |
-| `acp:message`     | A parsed JSON-RPC message from ACP       |
-| `acp:stderr`      | Stderr output from the ACP process       |
-| `acp:error`       | Spawn/connection error                   |
-| `acp:exit`        | ACP process terminated                   |
-| `bridge:error`    | Client-side protocol error               |
-
-## Project Structure
-
-```
 kiro-remote-bridge/
-├── README.md
-├── package.json               # Root workspace scripts (npm run dev)
 ├── backend/
-│   ├── package.json
-│   ├── server.js              # Bridge server (Express + WebSocket + ACP spawn)
-│   ├── acp-protocol.js        # JSON-RPC 2.0 message builders
-│   ├── test-client.js         # Basic connectivity test
-│   ├── test-acp-flow.js       # Full ACP lifecycle test
-│   └── test-protocol-unit.js  # Unit tests for protocol module
-└── frontend/
-    ├── package.json
-    ├── next.config.ts
-    └── app/
-        ├── page.tsx            # Main chat page
-        ├── layout.tsx
-        ├── globals.css
-        ├── components/
-        │   ├── status-bar.tsx
-        │   ├── message-bubble.tsx
-        │   └── chat-input.tsx
-        ├── hooks/
-        │   └── use-bridge.ts   # WebSocket + ACP state management
-        └── lib/
-            ├── types.ts        # TypeScript type definitions
-            └── acp-client.ts   # Browser-side protocol builders
+│   ├── server.js              # Express + WebSocket + file relay
+│   ├── adapters/              # Per-IDE adapters
+│   │   ├── base.js            # Abstract adapter interface
+│   │   ├── kiro.js            # Kiro adapter
+│   │   ├── cursor.js          # Cursor adapter
+│   │   ├── windsurf.js        # Windsurf adapter
+│   │   ├── vscode.js          # VS Code adapter
+│   │   ├── codex.js           # Codex CLI adapter
+│   │   └── index.js           # Registry + auto-detection
+│   ├── mock-agent.js          # Built-in test agent
+│   └── acp-protocol.js        # JSON-RPC 2.0 helpers
+├── frontend/
+│   ├── app/
+│   │   ├── page.tsx           # Main chat interface
+│   │   ├── components/        # UI components
+│   │   ├── hooks/             # WebSocket + state management
+│   │   └── lib/               # Types, storage, haptics
+│   └── public/
+│       ├── manifest.json      # PWA manifest
+│       └── icons/             # App icons
+└── .kiro-bridge/
+    ├── prompt.md              # Incoming prompts (written by bridge)
+    └── response.md            # Agent responses (read by bridge)
 ```
 
-## Development
+---
 
-```bash
-cd backend
-npm run dev    # Starts with --watch for auto-reload
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Server status |
+| GET | `/api/ides` | List all + running IDEs |
+| GET | `/api/windows` | List windows across all IDEs |
+| POST | `/api/ide` | Set active IDE |
+| POST | `/api/target` | Set target window |
+| POST | `/response-complete` | Signal response done |
+
+---
+
+## How the Response Loop Works
+
+The bridge appends a hidden instruction to each prompt:
+
+> `[System Routing: Please ensure you also stream a raw markdown copy of this response to .kiro-bridge/response.md so it can be relayed to my mobile device.]`
+
+The AI agent writes its response to `response.md`. The bridge polls this file every 500ms and streams new content to your phone via WebSocket. When the file stops changing for 6+ seconds, the bridge marks the response as complete.
+
+---
+
+## Configuration
+
+| Env Variable | Default | Description |
+|-------------|---------|-------------|
+| `HOST` | `0.0.0.0` | Bridge bind address |
+| `PORT` | `3100` | Bridge port |
+| `BRIDGE_MODE` | `relay` | `relay` (file-based) or `acp` (subprocess) |
+| `ACP_COMMAND` | — | Path to ACP binary (when available) |
+| `WORKSPACE_ROOT` | `..` | Root of the workspace |
+
+---
+
+## Adding a New IDE
+
+Create a file in `backend/adapters/your-ide.js`:
+
+```javascript
+const BaseAdapter = require("./base");
+const { exec } = require("child_process");
+
+class YourIDEAdapter extends BaseAdapter {
+  constructor() {
+    super();
+    this.name = "your-ide";
+    this.displayName = "Your IDE";
+    this.icon = "🎯";
+  }
+
+  getAppIdentifier() { return "YourApp"; }
+  getChatFocusShortcut() { return 'keystroke "l" using command down'; }
+
+  async isRunning() { /* ... */ }
+  async listWindows() { /* ... */ }
+  async injectPrompt(prompt, windowId) { /* ... */ }
+}
+
+module.exports = YourIDEAdapter;
 ```
+
+Then register it in `backend/adapters/index.js`.
+
+---
+
+## Security
+
+- Bridge binds to `0.0.0.0` by default for LAN access
+- Set `HOST=127.0.0.1` to restrict to localhost only
+- Use [Tailscale](https://tailscale.com) for encrypted remote access (WireGuard)
+- No data leaves your machine — everything runs locally
+- No external API calls — your IDE's own AI subscription handles the intelligence
+
+---
+
+## Roadmap
+
+- [ ] Push notifications when long tasks complete
+- [ ] Voice input (Web Speech API)
+- [ ] Quick action buttons (run tests, git status, deploy)
+- [ ] File browser with syntax highlighting
+- [ ] Terminal output streaming
+- [ ] One-command installer (`npx kiro-remote-bridge`)
+- [ ] macOS menu bar status app
+- [ ] QR code pairing
+- [ ] Auth token for multi-user security
+- [ ] Session history timeline
+
+---
+
+## License
+
+MIT
