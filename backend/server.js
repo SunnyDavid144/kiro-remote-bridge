@@ -160,26 +160,44 @@ function startStatusPoller() {
   if (statusPoller) return;
 
   const { exec } = require("child_process");
+  let lastSeenResponseContent = "";
+  let responseStableCount = 0; // How many polls the response hasn't changed
 
   statusPoller = setInterval(() => {
-    // Check if the response file is actively growing (simple heuristic)
-    // If it grew in the last poll interval, agent is responding
     try {
       if (fs.existsSync(RESPONSE_FILE)) {
         const content = fs.readFileSync(RESPONSE_FILE, "utf-8");
-        if (content.length > 0 && content !== lastResponseContent) {
+
+        if (content.length > 0 && content !== lastSeenResponseContent) {
+          // Response is actively growing — agent is working
+          lastSeenResponseContent = content;
+          responseStableCount = 0;
           if (agentStatus !== "working") {
             agentStatus = "working";
             broadcastStatus();
           }
           return;
         }
+
+        if (content.length > 0 && content === lastSeenResponseContent) {
+          // Response hasn't changed since last poll
+          responseStableCount++;
+
+          // If stable for 3+ polls (6 seconds) and we had a pending prompt, agent is done
+          if (responseStableCount >= 3 && pendingPromptId) {
+            console.log("[status] Response stable — agent finished");
+            stopResponseWatcher();
+            agentStatus = "idle";
+            broadcastStatus();
+            drainPromptQueue();
+            return;
+          }
+        }
       }
     } catch {}
 
-    // Also check if there's a pending prompt that was recently sent
-    // (within the last 30s) — assume working
-    if (pendingPromptId && lastPromptSentAt && Date.now() - lastPromptSentAt < 30000) {
+    // If there's a pending prompt sent in last 10s with no response yet, still working
+    if (pendingPromptId && lastPromptSentAt && Date.now() - lastPromptSentAt < 10000) {
       if (agentStatus !== "working") {
         agentStatus = "working";
         broadcastStatus();
@@ -187,11 +205,10 @@ function startStatusPoller() {
       return;
     }
 
-    // Otherwise idle
-    if (agentStatus !== "idle") {
+    // If no pending prompt, idle
+    if (!pendingPromptId && agentStatus !== "idle") {
       agentStatus = "idle";
       broadcastStatus();
-      // Check if there are queued prompts to send
       drainPromptQueue();
     }
   }, 2000);

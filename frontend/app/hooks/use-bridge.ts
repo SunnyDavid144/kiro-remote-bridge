@@ -161,8 +161,13 @@ export function useBridge(): UseBridgeReturn {
             startSessionNew();
             break;
           case "session/new":
-            setState((s) => ({ ...s, sessionId: result?.sessionId as string }));
-            addSystemMessage("Session ready. Send a message to begin.");
+            setState((s) => {
+              // Only show system message on first session creation
+              if (!s.sessionId) {
+                addSystemMessage("Session ready. Send a message to begin.");
+              }
+              return { ...s, sessionId: result?.sessionId as string };
+            });
             break;
           case "session/prompt":
             setIsStreaming(false);
