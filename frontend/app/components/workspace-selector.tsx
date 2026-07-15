@@ -10,6 +10,8 @@ interface WorkspaceSelectorProps {
 
 interface WindowInfo {
   name: string;
+  id: string;
+  ide: string;
   isTarget: boolean;
 }
 
@@ -27,9 +29,11 @@ export function WorkspaceSelector({ isOpen, onClose }: WorkspaceSelectorProps) {
       const res = await fetch(`http://${host}:3100/api/windows`);
       const data = await res.json();
       setWindows(
-        (data.windows || []).map((name: string) => ({
-          name,
-          isTarget: name === data.target,
+        (data.windows || []).map((w: { ide: string; ideDisplayName: string; ideIcon: string; window: string; windowId: string }) => ({
+          name: `${w.ideIcon} ${w.ideDisplayName} — ${w.window}`,
+          id: w.windowId,
+          ide: w.ide,
+          isTarget: w.windowId === data.target,
         }))
       );
       setTarget(data.target || null);
@@ -45,14 +49,14 @@ export function WorkspaceSelector({ isOpen, onClose }: WorkspaceSelectorProps) {
   }, [isOpen, fetchWindows]);
 
   const selectTarget = useCallback(
-    async (windowName: string | null) => {
+    async (windowName: string | null, ide?: string) => {
       tapLight();
       try {
         const host = typeof window !== "undefined" ? window.location.hostname : "127.0.0.1";
         await fetch(`http://${host}:3100/api/target`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ window: windowName }),
+          body: JSON.stringify({ window: windowName, ide }),
         });
         setTarget(windowName);
       } catch {}
@@ -135,11 +139,11 @@ export function WorkspaceSelector({ isOpen, onClose }: WorkspaceSelectorProps) {
             {/* Window list */}
             {windows.map((w) => (
               <WindowOption
-                key={w.name}
+                key={w.id}
                 name={extractProjectName(w.name)}
                 subtitle={w.name}
-                isSelected={target === w.name}
-                onSelect={() => selectTarget(w.name)}
+                isSelected={target === w.id}
+                onSelect={() => selectTarget(w.id, w.ide)}
                 icon="📂"
               />
             ))}
