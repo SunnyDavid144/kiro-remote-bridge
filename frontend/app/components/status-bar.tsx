@@ -1,6 +1,7 @@
 "use client";
 
 import type { BridgeState } from "../lib/types";
+import { getTheme } from "../lib/themes";
 
 interface StatusBarProps {
   state: BridgeState;
@@ -17,10 +18,14 @@ export function StatusBar({ state, isStreaming, agentStatus, queueLength, onReco
     <header className="animate-bar-slide-in flex items-center justify-between px-4 py-3 border-b border-[var(--border-dim)] bg-[var(--bg-secondary)]/95 backdrop-blur-md">
       {/* Left: Logo + Connection */}
       <div className="flex items-center gap-3">
-        {/* Logo mark */}
+        {/* Logo mark — shows active IDE */}
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[var(--accent)] to-[#4f46e5] flex items-center justify-center text-[11px] font-bold text-white shadow-md shadow-[var(--accent)]/20">
-            K
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[var(--accent)] to-[var(--accent)]/70 flex items-center justify-center text-[11px] font-bold text-white shadow-md shadow-[var(--accent)]/20">
+            {(() => {
+              const savedIde = typeof window !== "undefined" ? localStorage.getItem("kiro-remote-active-ide") : null;
+              const theme = getTheme(savedIde || "kiro");
+              return theme.icon;
+            })()}
           </div>
           <span className="text-xs font-bold tracking-[0.2em] text-[var(--text-primary)] uppercase">
             Remote

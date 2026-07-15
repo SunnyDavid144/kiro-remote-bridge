@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { tapLight } from "../lib/haptics";
+import { applyTheme, getTheme, THEMES } from "../lib/themes";
 
 interface WorkspaceSelectorProps {
   isOpen: boolean;
@@ -59,6 +60,11 @@ export function WorkspaceSelector({ isOpen, onClose }: WorkspaceSelectorProps) {
           body: JSON.stringify({ window: windowName, ide }),
         });
         setTarget(windowName);
+        // Apply theme for the selected IDE
+        if (ide && THEMES[ide]) {
+          applyTheme(ide);
+          localStorage.setItem("kiro-remote-active-ide", ide);
+        }
       } catch {}
     },
     []
@@ -124,6 +130,28 @@ export function WorkspaceSelector({ isOpen, onClose }: WorkspaceSelectorProps) {
               onSelect={() => selectTarget(null)}
               icon="🎯"
             />
+
+            {/* IDE Theme Picker */}
+            <div className="flex items-center gap-2 py-2">
+              <div className="flex-1 h-px bg-[var(--border-dim)]" />
+              <span className="text-[9px] uppercase tracking-widest text-[var(--text-muted)] font-mono">
+                agent theme
+              </span>
+              <div className="flex-1 h-px bg-[var(--border-dim)]" />
+            </div>
+
+            <div className="grid grid-cols-5 gap-2">
+              {Object.values(THEMES).map((theme) => (
+                <button
+                  key={theme.id}
+                  onClick={() => { applyTheme(theme.id); localStorage.setItem("kiro-remote-active-ide", theme.id); tapLight(); }}
+                  className="press-feedback flex flex-col items-center gap-1 py-2 px-1 rounded-lg border border-[var(--border-dim)] hover:border-[var(--border-active)] transition-colors"
+                >
+                  <span className="text-lg">{theme.icon}</span>
+                  <span className="text-[8px] text-[var(--text-muted)] font-mono">{theme.name}</span>
+                </button>
+              ))}
+            </div>
 
             {/* Divider */}
             {windows.length > 0 && (

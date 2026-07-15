@@ -11,6 +11,7 @@ import { SplashScreen } from "./components/splash-screen";
 import { Onboarding } from "./components/onboarding";
 import { SettingsPanel } from "./components/settings-panel";
 import { WorkspaceSelector } from "./components/workspace-selector";
+import { applyTheme } from "./lib/themes";
 
 export default function Home() {
   const { state, messages, sendPrompt, cancelPrompt, reconnect, clearHistory, isStreaming, reconnectAttempt, agentStatus, queueLength } =
@@ -39,6 +40,11 @@ export default function Home() {
       const completed = localStorage.getItem("kiro-remote-onboarding-complete");
       if (completed === "true") {
         setOnboardingComplete(true);
+      }
+      // Apply saved theme
+      const savedIde = localStorage.getItem("kiro-remote-active-ide");
+      if (savedIde) {
+        applyTheme(savedIde);
       }
     }
   }, []);

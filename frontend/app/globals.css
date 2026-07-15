@@ -30,6 +30,7 @@ body {
   color: var(--text-primary);
   overscroll-behavior: none;
   -webkit-overflow-scrolling: touch;
+  transition: background-color 0.4s ease, color 0.3s ease;
 }
 
 /* Safe area padding utility */
