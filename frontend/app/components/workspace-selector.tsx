@@ -216,6 +216,7 @@ function WindowOption({
 
 function extractProjectName(windowTitle: string): string {
   // Kiro window titles are usually like "folder — Kiro" or "file — folder — Kiro"
+  if (!windowTitle || typeof windowTitle !== "string") return "Unknown";
   const parts = windowTitle.split(" — ");
   if (parts.length >= 2) {
     return parts[parts.length - 2]; // The folder/project name
