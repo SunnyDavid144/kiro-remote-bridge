@@ -452,7 +452,7 @@ let responseWatcher = null;
 let lastResponseContent = "";
 let pendingPromptId = null;
 
-const ROUTING_SUFFIX = `\n\n[System Routing: Please ensure you also stream a raw markdown copy of this response to .kiro-bridge/response.md so it can be relayed to my mobile device. Clear the file before starting.]`;
+const ROUTING_SUFFIX = `\n\n[System Routing: You are being controlled remotely via phone. Stream your FULL working process to the file kiro-remote-bridge/.kiro-bridge/response.md in real-time. Clear the file first (write empty), then CONTINUOUSLY APPEND to it as you work. Include: what you're thinking, what files you're reading/editing, what commands you're running, and your actual response. Write each section as you produce it — do NOT wait until you're done. The mobile user needs to see live progress. Use fs_write to clear it, then fs_append for each chunk of output.]`;
 
 function relayPromptToKiro(jsonRpcMessage, text) {
   console.log(`[relay] Injecting prompt into Kiro via AppleScript...`);
