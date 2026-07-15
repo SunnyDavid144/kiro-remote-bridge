@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+.next/
+out/
+
+# Environment
+.env
+.env.local
+
+# Bridge runtime files
+.kiro-bridge/prompt.md
+.kiro-bridge/response.md
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+*.swp
+
+# Build
+dist/
+
+# Lock files (keep package-lock in each subdirectory)

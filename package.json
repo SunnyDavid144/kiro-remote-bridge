@@ -1,0 +1,11 @@
+{
+  "name": "kiro-remote-bridge-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev:backend & npm run dev:frontend",
+    "dev:backend": "npm start --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend -- -p 3101",
+    "build": "npm run build --prefix frontend"
+  }
+}

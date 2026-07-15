@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head><title>Icon Generator</title></head>
+<body>
+<p>Open this in a browser, right-click each canvas, and "Save Image As" to get the PNGs.</p>
+<canvas id="c192" width="192" height="192"></canvas>
+<canvas id="c512" width="512" height="512"></canvas>
+<script>
+function drawIcon(ctx, size) {
+  const s = size / 512;
+  // Background
+  ctx.fillStyle = '#0a0a0f';
+  ctx.beginPath();
+  ctx.roundRect(0, 0, size, size, 96 * s);
+  ctx.fill();
+  // Border
+  ctx.strokeStyle = 'rgba(99, 102, 241, 0.3)';
+  ctx.lineWidth = 2 * s;
+  ctx.beginPath();
+  ctx.roundRect(56*s, 56*s, 400*s, 400*s, 80*s);
+  ctx.stroke();
+  // K
+  ctx.font = `700 ${240*s}px "SF Mono", Monaco, monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const grad = ctx.createLinearGradient(0, 0, size, size);
+  grad.addColorStop(0, '#818cf8');
+  grad.addColorStop(1, '#4f46e5');
+  ctx.fillStyle = grad;
+  ctx.fillText('K', size/2, size/2 + 20*s);
+  // Signal dot
+  ctx.fillStyle = '#22c55e';
+  ctx.beginPath();
+  ctx.arc(380*s, 130*s, 12*s, 0, Math.PI*2);
+  ctx.fill();
+}
+drawIcon(document.getElementById('c192').getContext('2d'), 192);
+drawIcon(document.getElementById('c512').getContext('2d'), 512);
+</script>
+</body>
+</html>
