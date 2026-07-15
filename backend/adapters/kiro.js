@@ -61,10 +61,7 @@ end tell`;
     return new Promise((resolve) => {
       const activateWindow = windowId
         ? `
-tell application "Kiro"
-  activate
-  set index of (first window whose name contains ${JSON.stringify(windowId)}) to 1
-end tell
+tell application "Kiro" to activate
 delay 0.3`
         : `tell application "Kiro" to activate
 delay 0.2`;
