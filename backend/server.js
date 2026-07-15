@@ -21,6 +21,7 @@ const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const mockAgent = require("./mock-agent");
+const { AdapterRegistry } = require("./adapters");
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -92,61 +93,61 @@ app.get("/health", (_req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Workspace Discovery — List open Kiro windows via AppleScript
+// Workspace Discovery — Multi-IDE adapter system
 // ---------------------------------------------------------------------------
 
-let targetWindow = null; // null = frontmost, or a window name string
+const registry = new AdapterRegistry();
+registry.setActive("kiro"); // Default to Kiro
 
-app.get("/api/windows", (_req, res) => {
-  const { exec } = require("child_process");
-  const script = `
-tell application "System Events"
-  set kiroProcess to first process whose name is "Electron" and bundle identifier is "dev.kiro.desktop"
-  set windowNames to {}
-  repeat with w in windows of kiroProcess
-    set end of windowNames to name of w
-  end repeat
-  return windowNames
-end tell
-`;
-  exec(`osascript -e '${script.replace(/'/g, "'\\''")}'`, (err, stdout, stderr) => {
-    if (err) {
-      // Fallback: try with just "Kiro"
-      const fallbackScript = `
-tell application "Kiro"
-  set windowNames to {}
-  repeat with w in windows
-    set end of windowNames to name of w
-  end repeat
-  return windowNames
-end tell
-`;
-      exec(`osascript -e '${fallbackScript.replace(/'/g, "'\\''")}'`, (err2, stdout2) => {
-        if (err2) {
-          return res.json({ windows: [], error: err2.message, target: targetWindow });
-        }
-        const windows = parseAppleScriptList(stdout2.trim());
-        return res.json({ windows, target: targetWindow });
-      });
-      return;
-    }
-    const windows = parseAppleScriptList(stdout.trim());
-    res.json({ windows, target: targetWindow });
+let targetWindow = null;
+
+// List all running IDEs and their windows
+app.get("/api/windows", async (_req, res) => {
+  try {
+    const allWindows = await registry.listAllWindows();
+    res.json({
+      windows: allWindows,
+      activeIde: registry.activeAdapter,
+      target: targetWindow,
+    });
+  } catch (err) {
+    res.json({ windows: [], error: err.message, target: targetWindow });
+  }
+});
+
+// List detected IDEs
+app.get("/api/ides", async (_req, res) => {
+  const running = await registry.detectRunning();
+  const all = registry.listAll();
+  res.json({
+    all,
+    running,
+    active: registry.activeAdapter,
   });
 });
 
-app.post("/api/target", (req, res) => {
-  const { window } = req.body;
-  targetWindow = window || null;
-  console.log(`[bridge] Target window set to: ${targetWindow || "(frontmost)"}`);
-  res.json({ ok: true, target: targetWindow });
+// Set active IDE
+app.post("/api/ide", (req, res) => {
+  const { ide } = req.body;
+  try {
+    registry.setActive(ide);
+    console.log(`[bridge] Active IDE set to: ${ide}`);
+    res.json({ ok: true, active: ide });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
-function parseAppleScriptList(raw) {
-  // AppleScript returns comma-separated list like: "Window 1, Window 2"
-  if (!raw) return [];
-  return raw.split(",").map((s) => s.trim()).filter(Boolean);
-}
+// Set target window
+app.post("/api/target", (req, res) => {
+  const { window: win, ide } = req.body;
+  targetWindow = win || null;
+  if (ide) {
+    try { registry.setActive(ide); } catch {}
+  }
+  console.log(`[bridge] Target: ${registry.activeAdapter} → ${targetWindow || "(frontmost)"}`);
+  res.json({ ok: true, target: targetWindow, ide: registry.activeAdapter });
+});
 
 // ---------------------------------------------------------------------------
 // Agent Status Detection — Polls Kiro UI state via AppleScript
@@ -505,12 +506,12 @@ tell application "System Events"
 end tell
 `;
 
-  // Execute via osascript
-  const { exec } = require("child_process");
-  exec(`osascript -e '${script.replace(/'/g, "'\\''")}'`, (err, stdout, stderr) => {
-    if (err) {
-      console.error("[relay] AppleScript error:", err.message);
-      if (stderr) console.error("[relay] stderr:", stderr);
+  // Inject via the active adapter
+  registry.injectPrompt(fullPrompt, null, targetWindow).then((success) => {
+    if (success) {
+      console.log(`[relay] Prompt injected via ${registry.activeAdapter} adapter`);
+    } else {
+      console.error(`[relay] Adapter injection failed`);
       broadcast({
         type: "acp:message",
         data: {
@@ -518,13 +519,11 @@ end tell
           method: "session/update",
           params: {
             sessionUpdate: "agent_message_chunk",
-            content: { type: "text", text: `Error injecting prompt: ${err.message}` },
+            content: { type: "text", text: `Error: Failed to inject prompt into ${registry.activeAdapter}` },
           },
         },
       });
-      return;
     }
-    console.log("[relay] AppleScript executed successfully");
   });
 
   // Send streaming indicator to client
