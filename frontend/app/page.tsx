@@ -13,7 +13,7 @@ import { SettingsPanel } from "./components/settings-panel";
 import { WorkspaceSelector } from "./components/workspace-selector";
 
 export default function Home() {
-  const { state, messages, sendPrompt, cancelPrompt, reconnect, clearHistory, isStreaming, reconnectAttempt } =
+  const { state, messages, sendPrompt, cancelPrompt, reconnect, clearHistory, isStreaming, reconnectAttempt, agentStatus, queueLength } =
     useBridge();
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -92,7 +92,7 @@ export default function Home() {
   return (
     <div className="h-[100dvh] flex flex-col bg-[var(--bg-primary)]">
       {/* Status bar */}
-      <StatusBar state={state} isStreaming={isStreaming} onReconnect={reconnect} onSettingsOpen={() => setSettingsOpen(true)} onWorkspaceOpen={() => setWorkspaceOpen(true)} />
+      <StatusBar state={state} isStreaming={isStreaming} agentStatus={agentStatus} queueLength={queueLength} onReconnect={reconnect} onSettingsOpen={() => setSettingsOpen(true)} onWorkspaceOpen={() => setWorkspaceOpen(true)} />
 
       {/* Settings panel */}
       <SettingsPanel

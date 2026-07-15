@@ -5,12 +5,14 @@ import type { BridgeState } from "../lib/types";
 interface StatusBarProps {
   state: BridgeState;
   isStreaming: boolean;
+  agentStatus: "idle" | "working" | "unknown";
+  queueLength: number;
   onReconnect: () => void;
   onSettingsOpen: () => void;
   onWorkspaceOpen: () => void;
 }
 
-export function StatusBar({ state, isStreaming, onReconnect, onSettingsOpen, onWorkspaceOpen }: StatusBarProps) {
+export function StatusBar({ state, isStreaming, agentStatus, queueLength, onReconnect, onSettingsOpen, onWorkspaceOpen }: StatusBarProps) {
   return (
     <header className="animate-bar-slide-in flex items-center justify-between px-4 py-3 border-b border-[var(--border-dim)] bg-[var(--bg-secondary)]/95 backdrop-blur-md">
       {/* Left: Logo + Connection */}
@@ -31,7 +33,8 @@ export function StatusBar({ state, isStreaming, onReconnect, onSettingsOpen, onW
 
       {/* Right: ACP status + streaming */}
       <div className="flex items-center gap-2">
-        {isStreaming && <StreamingBadge />}
+        {/* Agent status indicator */}
+        <AgentStatusBadge status={agentStatus} queueLength={queueLength} isStreaming={isStreaming} />
 
         {/* Workspace selector button */}
         <button
@@ -120,6 +123,45 @@ function StreamingBadge() {
       </div>
       <span className="text-[9px] uppercase tracking-[0.15em] text-[var(--accent)] font-mono">
         live
+      </span>
+    </div>
+  );
+}
+
+
+function AgentStatusBadge({ status, queueLength, isStreaming }: { status: string; queueLength: number; isStreaming: boolean }) {
+  if (isStreaming) {
+    return (
+      <div className="animate-scale-in flex items-center gap-1.5 px-2 py-1 rounded-md bg-[var(--accent)]/10 border border-[var(--accent)]/25">
+        <div className="flex items-center gap-0.5">
+          <span className="w-1 h-1 rounded-full bg-[var(--accent)] animate-typing-1" />
+          <span className="w-1 h-1 rounded-full bg-[var(--accent)] animate-typing-2" />
+          <span className="w-1 h-1 rounded-full bg-[var(--accent)] animate-typing-3" />
+        </div>
+        <span className="text-[9px] uppercase tracking-[0.15em] text-[var(--accent)] font-mono">
+          live
+        </span>
+      </div>
+    );
+  }
+
+  if (status === "working") {
+    return (
+      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-[var(--warning)]/10 border border-[var(--warning)]/25">
+        <div className="w-1.5 h-1.5 rounded-full bg-[var(--warning)] animate-pulse-dot" />
+        <span className="text-[9px] uppercase tracking-[0.15em] text-[var(--warning)] font-mono">
+          busy{queueLength > 0 ? ` (${queueLength})` : ""}
+        </span>
+      </div>
+    );
+  }
+
+  // Idle
+  return (
+    <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-[var(--success)]/8 border border-[var(--success)]/20">
+      <div className="w-1.5 h-1.5 rounded-full bg-[var(--success)]" />
+      <span className="text-[9px] uppercase tracking-[0.15em] text-[var(--success)] font-mono">
+        ready
       </span>
     </div>
   );

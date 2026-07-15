@@ -149,6 +149,84 @@ function parseAppleScriptList(raw) {
 }
 
 // ---------------------------------------------------------------------------
+// Agent Status Detection — Polls Kiro UI state via AppleScript
+// ---------------------------------------------------------------------------
+
+let agentStatus = "idle"; // "idle" | "working" | "unknown"
+let promptQueue = []; // Queued prompts waiting for agent to become idle
+let statusPoller = null;
+
+function startStatusPoller() {
+  if (statusPoller) return;
+
+  const { exec } = require("child_process");
+
+  statusPoller = setInterval(() => {
+    // Check if the response file is actively growing (simple heuristic)
+    // If it grew in the last poll interval, agent is responding
+    try {
+      if (fs.existsSync(RESPONSE_FILE)) {
+        const content = fs.readFileSync(RESPONSE_FILE, "utf-8");
+        if (content.length > 0 && content !== lastResponseContent) {
+          if (agentStatus !== "working") {
+            agentStatus = "working";
+            broadcastStatus();
+          }
+          return;
+        }
+      }
+    } catch {}
+
+    // Also check if there's a pending prompt that was recently sent
+    // (within the last 30s) — assume working
+    if (pendingPromptId && lastPromptSentAt && Date.now() - lastPromptSentAt < 30000) {
+      if (agentStatus !== "working") {
+        agentStatus = "working";
+        broadcastStatus();
+      }
+      return;
+    }
+
+    // Otherwise idle
+    if (agentStatus !== "idle") {
+      agentStatus = "idle";
+      broadcastStatus();
+      // Check if there are queued prompts to send
+      drainPromptQueue();
+    }
+  }, 2000);
+}
+
+function broadcastStatus() {
+  console.log(`[status] Agent is now: ${agentStatus}`);
+  broadcast({
+    type: "bridge:agent-status",
+    status: agentStatus,
+    queueLength: promptQueue.length,
+  });
+}
+
+function drainPromptQueue() {
+  if (promptQueue.length === 0) return;
+  if (agentStatus !== "idle") return;
+
+  const next = promptQueue.shift();
+  console.log(`[queue] Draining queued prompt: "${next.text.slice(0, 50)}"`);
+  relayPromptToKiro(next.jsonRpcMessage, next.text);
+}
+
+let lastPromptSentAt = null;
+
+// API endpoint for status
+app.get("/api/status", (_req, res) => {
+  res.json({
+    agentStatus,
+    queueLength: promptQueue.length,
+    queue: promptQueue.map((p) => ({ text: p.text.slice(0, 80), timestamp: p.timestamp })),
+  });
+});
+
+// ---------------------------------------------------------------------------
 // HTTP + WebSocket Server
 // ---------------------------------------------------------------------------
 
@@ -314,6 +392,28 @@ function sendToAcp(jsonRpcMessage) {
   // Relay mode — write prompt to file for Kiro hook to pick up
   if (MODE === "relay" && jsonRpcMessage.method === "session/prompt") {
     const text = jsonRpcMessage.params?.prompt?.[0]?.text || "";
+
+    // If agent is busy, queue the prompt instead of interrupting
+    if (agentStatus === "working") {
+      console.log(`[queue] Agent busy — queuing prompt: "${text.slice(0, 50)}"`);
+      promptQueue.push({ jsonRpcMessage, text, timestamp: Date.now() });
+      broadcast({
+        type: "acp:message",
+        data: {
+          jsonrpc: "2.0",
+          method: "session/update",
+          params: {
+            sessionUpdate: "plan",
+            entries: [
+              { content: `Queued (agent is busy) — position ${promptQueue.length}`, priority: "medium", status: "pending" },
+            ],
+          },
+        },
+      });
+      broadcastStatus();
+      return true;
+    }
+
     return relayPromptToKiro(jsonRpcMessage, text);
   }
 
@@ -340,6 +440,10 @@ function relayPromptToKiro(jsonRpcMessage, text) {
   console.log(`[relay] Injecting prompt into Kiro via AppleScript...`);
   console.log(`[relay] Prompt: "${text.slice(0, 100)}"`);
 
+  // Track timing for status detection
+  lastPromptSentAt = Date.now();
+  agentStatus = "working";
+  broadcastStatus();
   // Ensure bridge dir exists
   if (!fs.existsSync(BRIDGE_DIR)) {
     fs.mkdirSync(BRIDGE_DIR, { recursive: true });
@@ -526,6 +630,15 @@ wss.on("connection", (ws, req) => {
     })
   );
 
+  // Send agent status
+  ws.send(
+    JSON.stringify({
+      type: "bridge:agent-status",
+      status: agentStatus,
+      queueLength: promptQueue.length,
+    })
+  );
+
   ws.on("message", (raw) => {
     let msg;
     try {
@@ -603,6 +716,7 @@ server.listen(PORT, HOST, () => {
     console.log("[bridge] Prompts from phone will be written to the prompt file.");
     console.log("[bridge] Kiro hook will pick them up and respond via the response file.");
     console.log("");
+    startStatusPoller();
   }
 });
 

@@ -20,6 +20,7 @@ export type ServerEnvelope =
   | { type: "bridge:status"; acp: "running" | "stopped"; pid: number | null }
   | { type: "bridge:pong"; ts: number }
   | { type: "bridge:error"; data: string }
+  | { type: "bridge:agent-status"; status: "idle" | "working" | "unknown"; queueLength: number }
   | { type: "acp:message"; data: JsonRpcMessage }
   | { type: "acp:stderr"; data: string }
   | { type: "acp:error"; data: string }

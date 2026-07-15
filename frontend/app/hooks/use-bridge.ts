@@ -45,6 +45,8 @@ export interface UseBridgeReturn {
   clearHistory: () => void;
   isStreaming: boolean;
   reconnectAttempt: number;
+  agentStatus: "idle" | "working" | "unknown";
+  queueLength: number;
 }
 
 export function useBridge(): UseBridgeReturn {
@@ -61,6 +63,8 @@ export function useBridge(): UseBridgeReturn {
     return storage.loadMessages();
   });
   const [isStreaming, setIsStreaming] = useState(false);
+  const [agentStatus, setAgentStatus] = useState<"idle" | "working" | "unknown">("unknown");
+  const [queueLength, setQueueLength] = useState(0);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttempts = useRef(0);
@@ -352,6 +356,14 @@ export function useBridge(): UseBridgeReturn {
         case "bridge:pong":
           // Latency check — could display in UI
           break;
+
+        case "bridge:agent-status":
+          if ("status" in envelope) {
+            const e = envelope as { status: "idle" | "working" | "unknown"; queueLength: number };
+            setAgentStatus(e.status);
+            setQueueLength(e.queueLength);
+          }
+          break;
       }
     },
     [addSystemMessage, handleAcpMessage, startInitialize]
@@ -475,5 +487,7 @@ export function useBridge(): UseBridgeReturn {
     clearHistory,
     isStreaming,
     reconnectAttempt: reconnectAttempts.current,
+    agentStatus,
+    queueLength,
   };
 }
